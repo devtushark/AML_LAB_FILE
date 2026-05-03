@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anomaly Notifications</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+        }
+        /* Custom scrollbar for the alerts container */
+        .alerts-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .alerts-container::-webkit-scrollbar-track {
+            background: #e0e0e0;
+            border-radius: 10px;
+        }
+        .alerts-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        .alerts-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+    <div class="w-full max-w-4xl bg-white shadow-xl rounded-xl p-6 md:p-8">
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-6 text-center">Anomaly Dashboard</h1>
+
+        <div id="alerts-container" class="alerts-container h-96 overflow-y-auto border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">
+            <!-- Anomalies will be displayed here -->
+            <p class="text-center text-gray-500">Waiting for anomalies...</p>
+        </div>
+
+        <div class="mt-6 text-center">
+            <button id="refreshButton" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75">
+                Refresh Anomalies
+            </button>
+            <p class="text-sm text-gray-500 mt-2">Auto-refreshing every 5 seconds.</p>
+        </div>
+    </div>
+
+    <script>
+        const NOTIFICATION_API_URL = "http://localhost:5001/get_anomalies"; // Use localhost because web browser accesses it via mapped port
+        const alertsContainer = document.getElementById('alerts-container');
+        const refreshButton = document.getElementById('refreshButton');
+
+        async function fetchAnomalies() {
+            try {
+                const response = await fetch(NOTIFICATION_API_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const anomalies = await response.json();
+                displayAnomalies(anomalies);
+            } catch (error) {
+                console.error("Could not fetch anomalies:", error);
+                alertsContainer.innerHTML = `
+                    <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md" role="alert">
+                        <p class="font-bold">Error connecting to notification service!</p>
+                        <p>Please ensure the notification service is running and accessible from the browser at ${NOTIFICATION_API_URL}.</p>
+                    </div>
+                `;
+            }
+        }
+
+        function displayAnomalies(anomalies) {
+            alertsContainer.innerHTML = ''; // Clear previous alerts
+
+            if (anomalies.length === 0) {
+                alertsContainer.innerHTML = '<p class="text-center text-gray-500">No anomalies detected yet. Keep monitoring!</p>';
+                return;
+            }
+
+            anomalies.reverse().forEach(anomaly => { // Display newest first
+                const anomalyDiv = document.createElement('div');
+                let bgColorClass = 'bg-red-50'; // Default for anomalies
+                let borderColorClass = 'border-red-400';
+                let textColorClass = 'text-red-800';
+                let typeText = 'Anomaly';
+
+                if (anomaly.type === 'log_anomaly') {
+                    bgColorClass = 'bg-orange-50';
+                    borderColorClass = 'border-orange-400';
+                    textColorClass = 'text-orange-800';
+                    typeText = 'Log Anomaly';
+                } else if (anomaly.type === 'telemetry_anomaly') {
+                    bgColorClass = 'bg-yellow-50';
+                    borderColorClass = 'border-yellow-400';
+                    textColorClass = 'text-yellow-800';
+                    typeText = 'Telemetry Anomaly';
+                }
+
+                anomalyDiv.className = `p-4 rounded-lg shadow-sm border-l-4 ${bgColorClass} ${borderColorClass} flex items-start space-x-3`;
+                anomalyDiv.innerHTML = `
+                    <div class="flex-shrink-0">
+                        <svg class="h-6 w-6 ${textColorClass}" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                    </div>
+                    <div class="flex-grow">
+                        <p class="font-semibold text-lg ${textColorClass}">${typeText} - <span class="text-gray-700">${anomaly.message}</span></p>
+                        <p class="text-sm text-gray-600 mt-1">Timestamp: ${new Date(anomaly.timestamp).toLocaleString()}</p>
+                        ${anomaly.original_log ? `<p class="text-xs text-gray-500 mt-1">Original Log: <span class="font-mono bg-gray-100 p-1 rounded-md">${anomaly.original_log}</span></p>` : ''}
+                        ${anomaly.reason ? `<p class="text-sm text-gray-600 mt-1">Reason: ${anomaly.reason}</p>` : ''}
+                        ${anomaly.metric ? `<p class="text-sm text-gray-600 mt-1">Metric: ${anomaly.metric}, Value: ${anomaly.value}, Threshold: ${anomaly.threshold}</p>` : ''}
+                    </div>
+                `;
+                alertsContainer.appendChild(anomalyDiv);
+            });
+            // Scroll to the bottom to show the latest anomaly
+            alertsContainer.scrollTop = alertsContainer.scrollHeight;
+        }
+
+        // Initial fetch
+        fetchAnomalies();
+
+        // Auto-refresh every 5 seconds
+        setInterval(fetchAnomalies, 5000);
+
+        // Manual refresh button
+        refreshButton.addEventListener('click', fetchAnomalies);
+    </script>
+</body>
+</html>
+

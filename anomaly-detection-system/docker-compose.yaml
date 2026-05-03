@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # Service for generating logs and telemetry
+  log_generator:
+    build: ./log_generator
+    volumes:
+      # Mount a named volume for logs to be shared
+      - logs_data:/app_logs
+    # Keep the container running even if the script finishes (daemon threads)
+    restart: unless-stopped
+
+  # Service for anomaly detection using Gemini AI
+  anomaly_detector:
+    build: ./anomaly_detector
+    volumes:
+      # Mount the same named volume to read logs
+      - logs_data:/app_logs
+    environment:
+      # Pass your Gemini AI API Key as an environment variable
+      # IMPORTANT: Replace "YOUR_GEMINI_API_KEY_HERE" with your actual key
+      # In a real production setup, use Docker secrets or a proper secrets management system.
+      GEMINI_API_KEY: "YOUR_GEMINI_API_KEY_HERE"
+    depends_on:
+      # Ensure notification_service is running before starting detector
+      - notification_service
+    restart: unless-stopped
+
+  # Service for receiving and storing anomaly notifications
+  notification_service:
+    build: ./notification_service
+    ports:
+      # Map container port 5001 to host port 5001
+      - "5001:5001"
+    restart: unless-stopped
+
+  # Service for the web-based notification UI
+  web_ui:
+    build: ./web_ui
+    ports:
+      # Map container port 80 (Nginx default) to host port 8080
+      - "8080:80"
+    depends_on:
+      # Ensure notification_service is running before starting web_ui
+      - notification_service
+    restart: unless-stopped
+
+# Define named volumes for persistent and shared data
+volumes:
+  logs_data:
